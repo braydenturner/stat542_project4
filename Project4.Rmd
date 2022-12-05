@@ -97,15 +97,21 @@ genre_list = c("Action", "Adventure", "Animation",
 
 ## System 1
 
+### Recommendation 1
+Group movies by number of ratings, to use as a cutoff to only use movies over a certain number 
+
+```{r}
+
+```
 
 
-
+### Recommendation 2
 
 
 ## System 2
 
 
-
+### UBCF
 ```{r}
 normalize = 'center'
 nn = 20
@@ -116,3 +122,4 @@ method = 'Cosine'
 ```
 
 
+### IBCF
