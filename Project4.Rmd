@@ -1,0 +1,118 @@
+---
+title: "Project 4"
+author: "Brayden Turner (brturne2), Caleb Cimmarrusti (calebtc2)"
+date: "2022-12-05"
+output: html_document
+---
+
+# Project 4: Movielense Data
+Brayden Turner (brturne2)
+Caleb Cimmarrusti (calebtc2)
+
+## Setup
+
+```{r, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(recommenderlab)
+library(DT)
+library(data.table)
+library(reshape2)
+```
+
+## Load Data
+
+Here is the underlying url for each of the paths to the datasets
+
+```{r}
+url = "https://liangfgithub.github.io/MovieData/"
+```
+
+### Load Ratings Data
+
+
+```{r}
+ratings = read.csv(paste0(url, 'ratings.dat?raw=true'), 
+                   sep = ':',
+                   colClasses = c('integer', 'NULL'), 
+                   header = FALSE)
+colnames(ratings) = c('UserID', 'MovieID', 'Rating', 'Timestamp')
+```
+
+
+### Load Movies Data
+
+```{r}
+movies = readLines(paste0(url, 'movies.dat?raw=true'))
+movies = strsplit(movies, split = "::", fixed = TRUE, useBytes = TRUE)
+movies = matrix(unlist(movies), ncol = 3, byrow = TRUE)
+movies = data.frame(movies, stringsAsFactors = FALSE)
+colnames(movies) = c('MovieID', 'Title', 'Genres')
+movies$MovieID = as.integer(movies$MovieID)
+
+# convert accented characters
+movies$Title[73]
+movies$Title = iconv(movies$Title, "latin1", "UTF-8")
+movies$Title[73]
+
+# extract year
+movies$Year = as.numeric(unlist(
+  lapply(movies$Title, function(x) substr(x, nchar(x)-4, nchar(x)-1))))
+```
+
+
+### Load User Data
+
+```{r}
+users = read.csv(paste0(url, 'users.dat?raw=true'),
+                 sep = ':', header = FALSE)
+users = users[, -c(2,4,6,8)] # skip columns
+colnames(users) = c('UserID', 'Gender', 'Age', 'Occupation', 'Zip-code')
+```
+
+### Tables of Our Data
+
+```{r}
+users[1:5,]
+movies[1:5,]
+ratings[1:5,]
+```
+
+
+Here is splitting the data on some useful things
+
+```{r}
+genres = as.data.frame(movies$Genres, stringsAsFactors=FALSE)
+tmp = as.data.frame(tstrsplit(genres[,1], '[|]',
+                              type.convert=TRUE),
+                    stringsAsFactors=FALSE)
+genre_list = c("Action", "Adventure", "Animation", 
+               "Children's", "Comedy", "Crime",
+               "Documentary", "Drama", "Fantasy",
+               "Film-Noir", "Horror", "Musical", 
+               "Mystery", "Romance", "Sci-Fi", 
+               "Thriller", "War", "Western")
+```
+
+
+## System 1
+
+
+
+
+
+
+## System 2
+
+
+
+```{r}
+normalize = 'center'
+nn = 20
+weighted = TRUE
+method = 'Cosine'
+
+
+```
+
+
