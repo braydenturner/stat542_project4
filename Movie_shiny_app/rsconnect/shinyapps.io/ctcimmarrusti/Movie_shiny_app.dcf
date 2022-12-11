@@ -1,0 +1,14 @@
+name: Movie_shiny_app
+title: Movie_shiny_app
+username:
+account: ctcimmarrusti
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 7862029
+bundleId: 6619179
+url: https://ctcimmarrusti.shinyapps.io/Movie_shiny_app/
+when: 1670654098.46221
+lastSyncTime: 1670654098.46222
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: top20s.csv
