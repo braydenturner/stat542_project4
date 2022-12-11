@@ -79,11 +79,11 @@ ratings[1:5,]
 ```
 
 
-Here is splitting the data on some useful things
+Here is splitting the data on some useful things and creating a matrix of the genres for each entry
 
 ```{r}
 genres = as.data.frame(movies$Genres, stringsAsFactors=FALSE)
-tmp = as.data.frame(tstrsplit(genres[,1], '[|]',
+tmp_genres = as.data.frame(tstrsplit(genres[,1], '[|]',
                               type.convert=TRUE),
                     stringsAsFactors=FALSE)
 genre_list = c("Action", "Adventure", "Animation", 
@@ -92,20 +92,169 @@ genre_list = c("Action", "Adventure", "Animation",
                "Film-Noir", "Horror", "Musical", 
                "Mystery", "Romance", "Sci-Fi", 
                "Thriller", "War", "Western")
+m = length(genre_list)
+genre_matrix = matrix(0, nrow(movies), length(genre_list))
+for(i in 1:nrow(tmp_genres)){
+  genre_matrix[i,genre_list %in% tmp_genres[i,]]=1
+}
+colnames(genre_matrix) = genre_list
+remove("tmp_genres", "genres")
+```
+
+What we can do with the above genre matrix is choose the row indicesx that align with that genre, which map exactly to the movie ID's. So we can filter the ratings list down by that genre. This will be useful later for surfacing only movies from that genre by popular rating.
+
+```{r, results = FALSE}
+sifted = which(genre_matrix[,"Documentary"] == TRUE)
+
+ratings[ratings$MovieID %in% sifted,]
 ```
 
 
 ## System 1
 
 ### Recommendation 1
-Group movies by number of ratings, to use as a cutoff to only use movies over a certain number 
+The first recommendation system will start by grouping movies by number of ratings, to use as a cutoff to only use movies over a certain number 
 
 ```{r}
+tmp = ratings %>% 
+  group_by(MovieID) %>% 
+  summarize(ratings_per_movie = n(), ave_ratings = mean(Rating)) %>%
+  inner_join(movies, by = 'MovieID')
+summary(tmp$ratings_per_movie)
+```
+
+
+If we take a look at number of ratings per movie we can see a lot is concentrated with only a few ratings. Using these movies helps ensure that we only surface movies to the user
+that have actually been rated a significant amount of times. We don't want to show a movie that only 2 users rated but happened to get a 5 rating.
+
+```{r}
+tmp %>% ggplot(aes(ratings_per_movie)) + 
+  geom_bar(fill = "steelblue", width = 1) + coord_cartesian(c(1,1500))
+```
+
+Here is taking the list and if we pick a cutoff point we filter out any movies below it. With the ones left being pretty critically acclaimed movies 
+
+```{r}
+
+ratings_floor = 100
+
+tmp %>% 
+  filter(ratings_per_movie > ratings_floor) %>%
+  arrange(desc = ratings_per_movie) %>%
+  select(c("Title", "ratings_per_movie")) %>%
+  print(n = 31)
+```
+
+Here we use that threshold of 1000, and pick one of the genres to filter by using the method we outlined above. We grab the movie images from the URL, filter out movies
+that have a number of ratings below the threshold, get the average ratings for the remaining movies, and sort in descinding order of the top movies. Which we can see below
+
+
+```{r}
+threshold = 100
+genre = "Drama"
+
+sifted = movies[genre_matrix[,genre] == TRUE,]$MovieID
+ratings_by_genre = ratings[ratings$MovieID %in% sifted,]
+
+small_image_url = "https://liangfgithub.github.io/MovieImages/"
+ratings_by_genre %>% 
+  group_by(MovieID) %>% 
+  summarize(ratings_per_movie = n(), 
+            ave_ratings = round(mean(Rating), dig=3)) %>%
+  inner_join(movies, by = 'MovieID') %>%
+  filter(ratings_per_movie > threshold) %>%
+  top_n(10, ave_ratings) %>%
+  mutate(Image = paste0('<img src="', 
+                        small_image_url, 
+                        MovieID, 
+                        '.jpg?raw=true"></img>')) %>%
+  select('Image', 'Title', 'ave_ratings') %>%
+  arrange(desc(ave_ratings)) %>%
+  datatable(class = "nowrap hover row-border", 
+            escape = FALSE, 
+            options = list(dom = 't',
+                          scrollX = TRUE, autoWidth = TRUE))
+```
+
+Here is the output used for outputting top 10 used for the app
+```{r}
+out = data.frame()
+for(g in genre_list) {
+  sifted = movies[genre_matrix[,g] == TRUE,]$MovieID
+  ratings_by_genre = ratings[ratings$MovieID %in% sifted,]
+  tmp = ratings_by_genre %>% 
+    group_by(MovieID) %>% 
+    summarize(ratings_per_movie = n(), 
+              ave_ratings = round(mean(Rating), dig=3)) %>%
+    inner_join(movies, by = 'MovieID') %>%
+    filter(ratings_per_movie > threshold) %>%
+    top_n(10, ave_ratings) %>%
+    arrange(desc(ave_ratings))
+  a = tmp
+  a$Genre = g
+  out = rbind(out, a)
+}
+write.table(out,  file = "top10.csv", row.names = F)
 
 ```
 
 
+
+
 ### Recommendation 2
+
+Another way to do recommendations would be by using the ratings from users that have rated a lot of movies. These users could be a bit more trusted in the community or are actually movie critics by trade. Below is breaking that out per user
+
+```{r}
+tmp = ratings %>% 
+  group_by(UserID) %>% 
+  summarize(ratings_per_user = n()) 
+summary(tmp$ratings_per_user)
+stem(tmp$ratings_per_user)
+sum(tmp$ratings_per_user > 500)
+sort(tmp$ratings_per_user[tmp$ratings_per_user>1300])
+```
+
+And here is a plot of those ratings per user
+
+```{r}
+tmp %>%
+  ggplot(aes(ratings_per_user)) +
+  geom_bar(fill = "steelblue") + coord_cartesian(c(20, 500))
+```
+
+We can see most users only rate a few movies, but some users end up rating potentially hundreds. So if we pick a threshold and only keep the ratings from users that rate above the threshold
+then we can more or less create a list from the "experts". These may tend towards more artsy films or ones that movie buffs enjoy.
+
+```{r}
+threshold = 150
+genre = "Action"
+
+sifted = movies[genre_matrix[,genre] == TRUE,]$MovieID
+ratings_by_genre = ratings[ratings$MovieID %in% sifted,]
+
+ids = tmp %>%
+  filter(ratings_per_user > threshold)
+ratings_by_genre_and_user = ratings_by_genre[ratings_by_genre$UserID %in% ids$UserID,]
+
+small_image_url = "https://liangfgithub.github.io/MovieImages/"
+ratings_by_genre_and_user %>% 
+ group_by(MovieID) %>% 
+  summarize(ave_ratings = round(mean(Rating), dig=3)) %>%
+  inner_join(movies, by = 'MovieID') %>%
+  top_n(10, ave_ratings) %>%
+  mutate(Image = paste0('<img src="', 
+                        small_image_url, 
+                        MovieID, 
+                        '.jpg?raw=true"></img>')) %>%
+  select('Image', 'Title', 'ave_ratings') %>%
+  arrange(desc(ave_ratings)) %>%
+  datatable(class = "nowrap hover row-border", 
+            escape = FALSE, 
+            options = list(dom = 't',
+                          scrollX = TRUE, autoWidth = TRUE))
+```
+
 
 
 ## System 2
@@ -113,13 +262,169 @@ Group movies by number of ratings, to use as a cutoff to only use movies over a 
 
 ### UBCF
 ```{r}
-normalize = 'center'
-nn = 20
-weighted = TRUE
-method = 'Cosine'
+myurl = "https://liangfgithub.github.io/MovieData/"
+ratings = read.csv(paste0(myurl, 'ratings.dat?raw=true'), 
+                   sep = ':',
+                   colClasses = c('integer', 'NULL'), 
+                   header = FALSE)
+colnames(ratings) = c('UserID', 'MovieID', 'Rating', 'Timestamp')
+i = paste0('u', ratings$UserID)
+j = paste0('m', ratings$MovieID)
+x = ratings$Rating
+tmp = data.frame(i, j, x, stringsAsFactors = T)
+Rmat = sparseMatrix(as.integer(tmp$i), as.integer(tmp$j), x = tmp$x)
+rownames(Rmat) = levels(tmp$i)
+colnames(Rmat) = levels(tmp$j)
+Rmat = new('realRatingMatrix', data = Rmat)
+
+train = Rmat[1:500, ]
+test = Rmat[501, ]
+```
 
 
+Here is the code for mypred using k=20
+
+
+```{r}
+# Center train and test 
+data = as(train, "matrix")
+user.means = rowMeans(data, na.rm = TRUE)
+data = data - user.means
+
+newdata = as(test, "matrix")
+newuser.mean = mean(newdata, na.rm = TRUE)
+newdata = newdata - newuser.mean
+# Compute similarity, cosine between test and train. 500 x 1 output
+sim1 = proxy::simil(data, newdata, method = "cosine")
+sim1 = (1 + sim1)/2
+
+# Find K Nearest users (users with highest similarities)
+sorted_values = sort(sim1,  decreasing=TRUE)
+k = 20
+threshhold = sorted_values[k]
+sim1[sim1 < threshhold] = NA
+
+# Computed the weighted average of those K users (K = 20)
+sim1 = as.vector(sim1)
+A = !is.na(data)
+
+# k_neighbors[is.na(k_neighbors)] <- 0
+numerator = colSums(data * sim1, na.rm=TRUE)
+denominator = colSums(A * sim1, na.rm=TRUE)
+
+
+wa = numerator/denominator
+
+# Add back mean of the test user, set inf to NA, set movies watched by the test user to na
+wa = wa + newuser.mean
+prerated = !is.na(as.vector(newdata))
+wa[wa == 0.0] <- NA
+wa[is.nan(wa)] <- NA
+wa[is.infinite(wa)] <- NA
+wa[prerated] <- NA
+
+mypred <- as.numeric(as(wa, "matrix"))
+```
+
+And here is checking the results
+
+```{r}
+recommender.UBCF <- Recommender(train, method = "UBCF",
+                                parameter = list(normalize = 'center', 
+                                                 method = 'Cosine', 
+                                                 nn = 20))
+
+p.UBCF <- predict(recommender.UBCF, test, type="ratings")
+p.UBCF <- as.numeric(as(p.UBCF, "matrix"))
+sum(is.na(p.UBCF) != is.na(mypred)) ### should be zero
+max(abs(p.UBCF - mypred), na.rm = TRUE)  ### should be less than 1e-06 
+```
+
+
+```{r}
 ```
 
 
 ### IBCF
+
+Here is the calculation toget mypred for IBCF using k=30
+
+```{r}
+# Center train and test 
+data = as(train, "matrix")
+user.means = rowMeans(data, na.rm = TRUE)
+data = data - user.means
+
+newdata = as(test, "matrix")
+# newuser.mean = mean(newdata, na.rm = TRUE)
+# newdata = newdata - newuser.mean
+
+sim_mat = proxy::simil(t(data), method = "cosine")
+sim_mat = (1 + sim_mat)/2
+sim_mat = as.matrix(sim_mat)
+# sim_mat[is.na(sim_mat)] = 0
+# ```
+# ```{r}
+
+size = dim(sim_mat)[2]
+k = 30
+for (j in 1:size) {
+  row = sim_mat[j,]
+  similar = tail(order(row, decreasing=FALSE, na.last=FALSE), k)
+  sim_mat[j,-similar] = NA
+}
+#```
+#```{r}
+
+sim_mat = t(sim_mat)
+
+# Computed the weighted average of those K users (K = 20)
+
+newdata = as.vector(newdata)
+A = !is.na(newdata)
+
+# k_neighbors[is.na(k_neighbors)] <- 0
+numerator = colSums(newdata * sim_mat, na.rm=TRUE)
+denominator = colSums(A * sim_mat, na.rm=TRUE)
+
+wa = numerator/denominator
+
+# Add back mean of the test user, set inf to NA, set movies watched by the test user to na
+
+# wa = wa + newuser.mean
+wa[is.nan(wa)] <- NA
+wa[is.infinite(wa)] <- NA
+wa[!is.na(newdata)]<-NA
+
+mypred = as.numeric(as(wa, "matrix"))
+```
+
+And below is the output
+
+```{r}
+recommender.IBCF <- Recommender(train, method = "IBCF",
+                                parameter = list(normalize = 'center', 
+                                                 method = 'Cosine', 
+                                                 k = 30))
+
+p.IBCF <- predict(recommender.IBCF, test, type="ratings")
+p.IBCF <- as.numeric(as(p.IBCF, "matrix"))
+
+## first output: should be less than 10
+sum(is.na(p.IBCF) != is.na(mypred))  
+
+## second output: should be less than 10%
+mydiff = abs(p.IBCF - mypred)
+sum(mydiff[!is.na(mydiff)] > 1e-6) / sum(!is.na(mydiff)) 
+```
+
+
+
+
+
+# Application
+
+The app is deployed at ctcimmarrusti.shinyapps.io/Movie_shiny_app
+
+
+
